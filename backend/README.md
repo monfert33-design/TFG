@@ -84,3 +84,18 @@ sudo /home/(Tu usuario)/TFG/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --p
   * Al realizar consultas consecutivas sin ataques intermedios, el backend devolvió el estado sin cambios en milisegundos sin invocar al LLM.
   * Tras un nuevo barrido con Hydra desde Kali Linux, el sistema aisló exactamente el bloque de líneas nuevas, registrando la cadencia del ataque y sugiriendo la regla `iptables` específica sin arrastrar ruido histórico.
   * **Limitación detectada para siguientes versiones:** El análisis continuaba restringido de forma exclusiva a `/var/log/auth.log`, careciendo de visibilidad sobre eventos de red a nivel de firewall, actividad web o comandos del sistema.
+
+### Versión 0.4 - Capacidades Agénticas (Tool Calling) y Remediación Activa (HITL)
+* **Objetivo de la versión:** Transformar el analizador pasivo en un agente autónomo de respuesta a incidentes capaz de interactuar con el sistema operativo mediante llamadas a herramientas (*tool calling*) y habilitar la mitigación interactiva con supervisión humana.
+* **Implementación en `main.py` y `agent_tools.py`:**
+  * **Caja de Herramientas del Sistema (`agent_tools.py`):** Integración de funciones locales para inspeccionar sockets de red activos (`tool_listar_conexiones_red` mediante `ss`), examinar la tabla de procesos (`tool_inspeccionar_procesos` mediante `ps`) y consultar fragmentos complementarios de logs (`tool_leer_segmento_log`).
+  * **Bucle de Razonamiento Agéntico:** Soporte para ejecución en bucle de herramientas en el endpoint `POST /api/forensics/ai-analyze`. Si el modelo detecta una agresión en los registros, puede solicitar información de sockets o procesos antes de emitir su dictamen pericial definitivo.
+  * **Estructuración de Contramedidas:** El esquema de respuesta incorpora el objeto `accion_propuesta`, formalizando el tipo de acción (`BLOQUEAR_IP`), el identificador objetivo, el comando sugerido y la justificación técnica.
+  * **Endpoint de Remediación (`POST /api/remediation/apply`):** Ejecución controlada de contramedidas en el sistema operativo mediante `subprocess`. Incluye comprobación previa para no duplicar reglas en `iptables`, protección contra el bloqueo accidental de la interfaz de bucle local (`127.0.0.1`) y respuesta con el estado del firewall.
+  * **Control de Privilegios:** Configuración de reglas en `/etc/sudoers` para permitir la invocación de `iptables` sin requerir contraseña interactiva en el servidor.
+* **Pruebas y Resultados Obtenidos:**
+  * Se lanzó un ataque de fuerza bruta SSH con Hydra desde Kali Linux (`192.168.56.10`).
+  * El agente detectó la agresión en `auth.log`, corroboró los sockets abiertos y propuso el bloqueo inmediato de la IP atacante.
+  * Al pulsar el botón de mitigación en la interfaz de Avalonia UI, se ejecutó `iptables -I INPUT -s 192.168.56.10 -j DROP`.
+  * La consola de Hydra en Kali quedó congelada inmediatamente con errores de *timeout*, y un sondeo con `nmap -p 22 192.168.56.20` reflejó el puerto como `filtered`. En Ubuntu, el comando `sudo iptables -L INPUT -v -n` constató el incremento en tiempo real de los paquetes descartados (*DROP*).
+  * **Limitación detectada para siguientes versiones:** La ingesta continuaba limitada a eventos de autenticación (`auth.log`), sin procesar de forma nativa los registros de escaneo en el kernel ni anomalías del servidor web.
