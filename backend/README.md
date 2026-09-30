@@ -99,3 +99,21 @@ sudo /home/(Tu usuario)/TFG/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --p
   * Al pulsar el botón de mitigación en la interfaz de Avalonia UI, se ejecutó `iptables -I INPUT -s 192.168.56.10 -j DROP`.
   * La consola de Hydra en Kali quedó congelada inmediatamente con errores de *timeout*, y un sondeo con `nmap -p 22 192.168.56.20` reflejó el puerto como `filtered`. En Ubuntu, el comando `sudo iptables -L INPUT -v -n` constató el incremento en tiempo real de los paquetes descartados (*DROP*).
   * **Limitación detectada para siguientes versiones:** La ingesta continuaba limitada a eventos de autenticación (`auth.log`), sin procesar de forma nativa los registros de escaneo en el kernel ni anomalías del servidor web.
+
+### Versión 0.5 - Telemetría Multicanal, Auditoría de Kernel (auditd) y Monitorización de Integridad (FIM)
+* **Objetivo de la versión:** Superar la limitación del análisis exclusivo de autenticación (`auth.log`) evolucionando hacia un motor multicanal de espectro completo (red, web, sistema operativo, llamadas al núcleo e integridad de archivos), con capacidad de clasificar múltiples incidentes simultáneos de forma desacoplada y ejecutar remediaciones.
+* **Implementación en `main.py` y Sistema Operativo:**
+  * **Ingesta Multicanal Heterogénea:** Ampliación del diccionario `LOG_SOURCES` para monitorizar de manera coordinada cinco canales del sistema mediante punteros independientes (`offsets`):
+    * `auth.log`: Abuso de `sudo`/`su`, manipulaciones de cuentas y fuerza bruta.
+    * `kern.log`: Escaneos de puertos Nmap SYN interceptados por reglas de registro en `iptables`.
+    * `nginx/access.log`: Ataques web de inyección SQL, *Path Traversal* / LFI y escaneo automatizado de rutas con Gobuster.
+    * `syslog`: Detección de persistencia mediante modificaciones no autorizadas en tareas programadas (`cron`) y cierres forzados de servicios.
+    * `audit/audit.log` (`auditd`): Trazas a nivel de llamadas al sistema (*syscalls*) para identificar ejecución de scripts y binarios en directorios temporales (`/tmp`, `/dev/shm`).
+  * **Detección Activa de Evasión de Defensas (`T1070.002`):** Identificación automática de intentos de borrado o truncado intencionado de evidencias al comprobar variaciones anómalas en el puntero de lectura (`current_size < last_offset`), generando alertas de integridad prioritarias.
+  * **Módulo de Integridad de Archivos (FIM):** Implementación de la función `check_file_integrity()` basada en el cálculo recurrente de hashes criptográficos SHA-256 (`.fim_hashes.json`) sobre binarios y configuraciones sensibles (`/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/bin/ps`, `/bin/ls`) para alertar ante manipulaciones locales o *trojaning*.
+  * **Desacoplamiento de Incidentes Concurrentes:** Rediseño estructural de la respuesta de Gemini para emitir un listado independiente de incidentes (`"incidentes": [...]`), permitiendo que eventos simultáneos de distinta naturaleza (por ejemplo, un ataque web y un escaneo de red concurrente) no se mezclen en un único dictamen.
+  * **Ampliación de Remediación HITL (`MATAR_PROCESO`):** Extensión del endpoint `/api/remediation/apply` con soporte para neutralizar sesiones activas de C2 / Shells Reversas mediante `kill -9 <PID>` con comprobaciones de seguridad sobre procesos reservados del sistema.
+* **Pruebas y Resultados Obtenidos:**
+  * **Frente Web:** Un ataque con inyecciones SQL y sondeos con Gobuster desde Kali Linux (`192.168.56.10`) se catalogó bajo la técnica `T1190` a través del canal Nginx.
+  * **Persistencia y Shell Reversa:** La inyección de una tarea en `crontab` y la posterior apertura de una reverse shell hacia Kali mediante sockets Python fue catalogada con severidad crítica (`T1053.003`, `T1059.004`), habilitando la contramedida de terminación de proceso.
+  * **Evasión y Manipulación FIM:** Al forzar el truncado a 0 bytes de los registros de Nginx (`truncate -s 0`), el sistema identificó de inmediato la maniobra evasiva (`T1070.002`), sugiriendo la protección de inmutabilidad (`chattr +a`).
