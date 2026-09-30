@@ -65,7 +65,7 @@ El sistema monitoriza en tiempo real los eventos y registros de un servidor Linu
 |  |  - Integridad SHA-256 de evidencias |      |  - Salida estructurada JSON          |  |
 |  +-------------------------------------+      +--------------------------------------+  |
 +-----------------------------------------------------------------------------------------+
-
+```
 ### Componentes y Entorno de Red
 
 * **Red Privada Virtual (Host-Only):** Segmento de red `192.168.56.0/24` desplegado sobre Oracle VirtualBox, permitiendo aislar el tráfico de prueba de la red local física e Internet.

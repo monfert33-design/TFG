@@ -41,7 +41,7 @@ Desde este directorio con el entorno virtual activo(la ruta va en funcion de don
 
 ```bash
 sudo /home/(Tu usuario)/TFG/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
+```
 ---
 
 ## Versiones del proyecto:
