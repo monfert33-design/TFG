@@ -58,3 +58,16 @@ sudo /home/(Tu usuario)/TFG/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --p
   * Se lanzó un ataque de fuerza bruta SSH controlado desde la máquina atacante Kali Linux (`192.168.56.10`) contra el servidor de pruebas (`192.168.56.20`).
   * El endpoint devolvió satisfactoriamente el objeto JSON estructurado con el recuento exacto de intentos fallidos, identificó la IP origen del atacante, el usuario víctima (`root`) y adjuntó una muestra de las últimas trazas analizadas junto a su correspondiente firma SHA-256.
   * **Limitación detectada para siguientes versiones:** En esta primera prueba el archivo de logs se leía completo desde el inicio y de forma estática en cada petición, sin persistencia de lectura ni capacidad de análisis con modelos de lenguaje.
+
+### Versión 0.2 - Integración del Modelo de Lenguaje (LLM)
+* **Objetivo de la versión:** Sustituir el análisis estático basado en expresiones regulares por un motor de inferencia con Inteligencia Artificial utilizando la API de Google Gemini (`gemini-2.5-flash`), permitiendo que el sistema interprete la evidencia cruda, evalúe la severidad y sugiera contramedidas operativas de forma autónoma.
+* **Implementación en `main.py`:**
+  * **Conexión con el SDK de Google GenAI:** Configuración del cliente oficial de Gemini mediante variables de entorno (`GEMINI_API_KEY`, `AI_MODEL`) para desacoplar las credenciales del código fuente.
+  * **Ingeniería de Prompts Forense:** Definición de una instrucción de sistema (`SYSTEM_PROMPT_FORENSE`) con directivas estrictas para forzar al modelo a razonar como un perito DFIR y responder exclusivamente en un esquema JSON estructurado (`response_mime_type="application/json"`).
+  * **Estandarización del Dictamen Pericial:** La respuesta del modelo normaliza campos como: `ataque_detectado`, `tipo_ataque`, `tecnica_mitre` (ej. `T1110.001 - Password Guessing`), `severidad`, `ip_atacante`, `usuario_objetivo`, `resumen_forense` y `contramedida_recomendada` (comando `iptables` sugerido).
+  * **Nuevo Endpoint de Análisis Agéntico:** Creación de `POST /api/forensics/ai-analyze`, el cual automatiza la extracción de las últimas trazas de `/var/log/auth.log`, calcula su hash criptográfico SHA-256 para preservar la cadena de custodia y envía la evidencia cruda a Gemini para su triaje.
+* **Pruebas y Resultados Obtenidos:**
+  * Se lanzó un ataque de fuerza bruta SSH con Hydra desde Kali Linux (`192.168.56.10`) contra el servidor de pruebas.
+  * A través de la documentación interactiva Swagger (`/docs`), se ejecutó una llamada de prueba contra `POST /api/forensics/ai-analyze`.
+  * El modelo clasificó con precisión el ataque bajo la técnica MITRE `T1110.001`, asignó severidad alta, identificó correctamente la IP agresora y generó una propuesta de mitigación sintáctica válida para el firewall.
+  * **Limitación detectada para siguientes versiones:** La extracción se realizaba mediante un recorte fijo de líneas (`tail -n 30`), lo que provocaba que una misma evidencia pudiera volver a analizarse si no había tráfico nuevo o que eventos pasados saturaran el prompt sin un control dinámico del estado de lectura.

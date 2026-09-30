@@ -105,3 +105,4 @@ El sistema monitoriza en tiempo real los eventos y registros de un servidor Linu
 ├── docs/               # Diagramas, especificaciones técnicas y anexos para la memoria
 ├── .gitignore          # Exclusión de credenciales, entornos virtuales y temporales
 └── README.md           # Presentación general del proyecto
+```
