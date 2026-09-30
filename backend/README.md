@@ -71,3 +71,16 @@ sudo /home/(Tu usuario)/TFG/backend/venv/bin/uvicorn main:app --host 0.0.0.0 --p
   * A través de la documentación interactiva Swagger (`/docs`), se ejecutó una llamada de prueba contra `POST /api/forensics/ai-analyze`.
   * El modelo clasificó con precisión el ataque bajo la técnica MITRE `T1110.001`, asignó severidad alta, identificó correctamente la IP agresora y generó una propuesta de mitigación sintáctica válida para el firewall.
   * **Limitación detectada para siguientes versiones:** La extracción se realizaba mediante un recorte fijo de líneas (`tail -n 30`), lo que provocaba que una misma evidencia pudiera volver a analizarse si no había tráfico nuevo o que eventos pasados saturaran el prompt sin un control dinámico del estado de lectura.
+
+### Versión 0.3 - Persistencia de Estado (Cursor Forense) y Optimización de Inferencia
+* **Objetivo de la versión:** Resolver el reanálisis redundante de eventos pasados mediante la persistencia de lectura por deltas (*byte offsets*) y aumentar la profundidad técnica del dictamen generado por la IA.
+* **Implementación en `main.py`:**
+  * **Mecanismo de Cursor Forense (`.log_cursor.json`):** Implementación de las funciones `get_last_cursor()` y `save_cursor()` para rastrear la posición exacta en bytes dentro de `/var/log/auth.log`. El colector utiliza `seek()` para leer únicamente los deltas generados desde la última consulta.
+  * **Manejo de Rotación de Logs (`logrotate`):** Detección de truncado cuando el tamaño actual del archivo es menor que el cursor guardado (`current_size < last_offset`), restableciendo el puntero a cero para no perder eventos tras una rotación.
+  * **Control de Consumo de API:** Si no existen líneas nuevas en la ventana de tiempo evaluada (`has_new_logs == False`), el endpoint responde inmediatamente con `"sin_cambios": True`, evitando consultas innecesarias a Gemini y reduciendo latencia y coste.
+  * **Endpoint Auxiliar de Mantenimiento:** Creación de `POST /api/forensics/reset-cursor` para permitir al analista sincronizar el puntero directamente con el final del archivo.
+  * **Ampliación del Esquema JSON:** Se añadieron al prompt directivas para extraer métricas forenses cuantitativas (`intentos_estimados`, `rango_puertos_origen`, `frecuencia`) y una evaluación explícita de `impacto_potencial`.
+* **Pruebas y Resultados Obtenidos:**
+  * Al realizar consultas consecutivas sin ataques intermedios, el backend devolvió el estado sin cambios en milisegundos sin invocar al LLM.
+  * Tras un nuevo barrido con Hydra desde Kali Linux, el sistema aisló exactamente el bloque de líneas nuevas, registrando la cadencia del ataque y sugiriendo la regla `iptables` específica sin arrastrar ruido histórico.
+  * **Limitación detectada para siguientes versiones:** El análisis continuaba restringido de forma exclusiva a `/var/log/auth.log`, careciendo de visibilidad sobre eventos de red a nivel de firewall, actividad web o comandos del sistema.
