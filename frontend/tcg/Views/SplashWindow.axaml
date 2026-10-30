@@ -1,0 +1,152 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="tcg.Views.SplashWindow"
+        Title="NexGuard Startup"
+        Width="640" Height="360"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="None"
+        CanResize="False"
+        Background="Transparent">
+
+    <!-- ================= ESTILOS ================= -->
+    <Window.Styles>
+        <!-- Animación continua para el círculo de carga -->
+        <Style Selector="Border.spinner">
+            <Style.Animations>
+                <Animation Duration="0:0:1.0" IterationCount="Infinite">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="RotateTransform.Angle" Value="0"/>
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="RotateTransform.Angle" Value="360"/>
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+    </Window.Styles>
+
+    <!-- CONTENEDOR PRINCIPAL: Tarjeta con bordes redondeados y estilo SOC -->
+    <Border Background="#0D1117"
+            BorderBrush="#30363D"
+            BorderThickness="1"
+            CornerRadius="12"
+            BoxShadow="0 10 30 0 #50000000">
+        
+        <Grid RowDefinitions="*,Auto">
+            
+            <!-- ================= 1. ZONA CENTRAL: IDENTIDAD ================= -->
+            <!-- Provisional: falta añadir el logo oficial -->
+            <StackPanel Grid.Row="0"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="8">
+                
+                <!-- Logo provisional -->
+                <Border Width="56" Height="56"
+                        CornerRadius="28"
+                        Background="#161B22"
+                        BorderBrush="#1F6FEB"
+                        BorderThickness="2"
+                        HorizontalAlignment="Center">
+                    <TextBlock Text="🛡"
+                               FontSize="26"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Nombre y subtítulo de la plataforma -->
+                <TextBlock Text="NEXGUARD"
+                           FontSize="28"
+                           FontWeight="Black"
+                           LetterSpacing="3"
+                           Foreground="#FFFFFF"
+                           HorizontalAlignment="Center"/>
+
+                <TextBlock Text="DFIR &amp; PURPLE TEAM AGENTIC PLATFORM"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           LetterSpacing="1.5"
+                           Foreground="#58A6FF"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- ================= 2. ZONA INFERIOR: DIAGNÓSTICO Y ACCIONES ================= -->
+            <Border Grid.Row="1"
+                    Background="#161B22"
+                    CornerRadius="0 0 11 11"
+                    Padding="24 16"
+                    BorderBrush="#21262D"
+                    BorderThickness="0 1 0 0">
+                
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    
+                    <!-- Spinner circular de carga -->
+                    <Border x:Name="SpinnerControl"
+                            Grid.Column="0"
+                            Classes="spinner"
+                            Width="26" Height="26"
+                            CornerRadius="13"
+                            BorderThickness="3"
+                            BorderBrush="#58A6FF"
+                            Margin="0 0 16 0"
+                            VerticalAlignment="Center"/>
+
+                    <!-- Icono estático de alerta en caso de error (ocupa el lugar del spinner) -->
+                    <TextBlock x:Name="IconError"
+                               Grid.Column="0"
+                               Text="⚠️"
+                               FontSize="22"
+                               Margin="0 0 16 0"
+                               VerticalAlignment="Center"
+                               IsVisible="False"/>
+
+                    <!-- Textos dinámicos del estado (se actualizan desde el code-behind) -->
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0 0 12 0">
+                        <TextBlock x:Name="TxtStatus"
+                                   Text="Iniciando subsistemas..."
+                                   FontSize="12"
+                                   FontWeight="Medium"
+                                   Foreground="#C9D1D9"/>
+                        <TextBlock x:Name="TxtSubStatus"
+                                   Text="Estableciendo enlace con Ubuntu Server..."
+                                   FontSize="10"
+                                   Foreground="#8B949E"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <!-- Panel de botones de decisión ante fallo (oculto hasta que haya un error) -->
+                    <StackPanel x:Name="PanelActions"
+                                Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center"
+                                IsVisible="False">
+                        
+                        <!-- Vuelve a intentar la conexión -->
+                        <Button x:Name="BtnRetry"
+                                Content="Reintentar"
+                                FontSize="11"
+                                Padding="12 6"
+                                Background="#1F6FEB"
+                                Foreground="White"
+                                CornerRadius="6"
+                                Click="OnRetryClicked"/>
+
+                        <!-- Cierra la aplicación -->
+                        <Button x:Name="BtnExit"
+                                Content="Cerrar"
+                                FontSize="11"
+                                Padding="12 6"
+                                Background="#21262D"
+                                Foreground="#F85149"
+                                BorderBrush="#30363D"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Click="OnExitClicked"/>
+                    </StackPanel>
+
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

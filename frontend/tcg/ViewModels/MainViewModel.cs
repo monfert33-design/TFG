@@ -11,91 +11,121 @@ using tcg.Services;
 
 namespace tcg.ViewModels
 {
-    /// <summary>
-    /// ViewModel principal que orquesta la lógica de negocio, el enlace de datos (Data Binding),
-    /// el filtrado en tiempo real, el bucle de sondeo automático y la remediación activa (HITL).
-    /// </summary>
     public partial class MainViewModel : ObservableObject
     {
-        // Instancia del cliente HTTP que conecta con la API de FastAPI
+        // Servicios: comunicación con la API forense y persistencia local
         private readonly ForensicsApiService _apiService;
+        private readonly StorageService _storageService;
 
-        // Repositorio en memoria con la totalidad de los incidentes recibidos durante la sesión
-        private readonly ObservableCollection<ForensicCaseResponse> _allCases = new();
-
-        // Registro de hashes SHA-256 ya procesados para deduplicación estricta y preservación de cadena de custodia
+        // Lista maestra de casos (sin filtrar) y hashes ya procesados para evitar duplicados
+        private readonly List<ForensicCaseResponse> _allCases = new();
         private readonly HashSet<string> _processedEvidenceHashes = new();
-
-        // Timer para la monitorización automática continua ejecutado sobre el hilo principal de la UI
         private readonly DispatcherTimer _autoScanTimer;
 
-        // Colección visible en la interfaz tras aplicar los filtros de búsqueda por texto
+        // --- CONTROL DE NAVEGACIÓN Y ALTERNANCIA DE VISTAS ---
         [ObservableProperty]
-        private ObservableCollection<ForensicCaseResponse> _filteredCases = new();
+        private bool _isDashboardVisible = true;
 
-        // Caso forense seleccionado actualmente en el panel central de detalles
+        [ObservableProperty]
+        private bool _isReportsVisible = false;
+
+        // Muestra la pantalla de incidentes y oculta la de informes
+        [RelayCommand]
+        public void ShowDashboard()
+        {
+            IsDashboardVisible = true;
+            IsReportsVisible = false;
+        }
+
+        // Muestra la pantalla de informes y oculta la de incidentes
+        [RelayCommand]
+        public void ShowReports()
+        {
+            IsDashboardVisible = false;
+            IsReportsVisible = true;
+        }
+
+        // --- HISTÓRICO Y CLASIFICACIÓN TEMPORAL DE INCIDENTES ---
+        [ObservableProperty]
+        private ObservableCollection<ForensicCaseResponse> _currentSessionCases = new();
+
+        [ObservableProperty]
+        private ObservableCollection<ForensicCaseResponse> _archivedCases = new();
+
         [ObservableProperty]
         private ForensicCaseResponse? _selectedCase;
 
-        // Controla la visibilidad del menú o barra lateral
+        // --- ESTADO DE LA INTERFAZ ---
         [ObservableProperty]
         private bool _isSidebarOpen = false;
 
-        // Indica si existe una petición HTTP o inferencia de IA en curso (para mostrar spinners de carga)
         [ObservableProperty]
         private bool _isLoading = false;
 
-        // Estado del motor de sondeo periódico (activo o en pausa)
         [ObservableProperty]
         private bool _isAutoScanActive = true;
 
-        // Texto introducido por el operador en el cuadro de búsqueda superior
         [ObservableProperty]
         private string _searchText = string.Empty;
 
-        // Mensaje informativo mostrado en la barra inferior de estado del dashboard
         [ObservableProperty]
         private string _statusMessage = "Monitorización activa (Sondeo cada 30s)...";
 
-        /// <summary>
-        /// Constructor del ViewModel. Inicializa el temporizador de sondeo y lanza el primer escaneo.
-        /// </summary>
         public MainViewModel()
         {
             _apiService = new ForensicsApiService();
+            _storageService = new StorageService();
 
-            // Configuración del temporizador a 30 segundos en el hilo de UI
+            // Temporizador de sondeo automático cada 30 segundos
             _autoScanTimer = new DispatcherTimer
             {
                 Interval = TimeSpan.FromSeconds(30)
             };
             _autoScanTimer.Tick += async (sender, args) => await ExecuteScanInternalAsync(isAutomatic: true);
 
-            // Iniciar la monitorización continua
-            _autoScanTimer.Start();
-
-            // Ejecutar un primer chequeo al arrancar la aplicación
-            _ = ExecuteScanInternalAsync(isAutomatic: true);
+            _ = InitializeSystemAsync();
         }
 
-        /// <summary>
-        /// Método interceptor de CommunityToolkit.Mvvm que se dispara automáticamente al mutar SearchText.
-        /// </summary>
+        // Arranque: carga el histórico guardado, activa el temporizador y lanza un primer análisis
+        private async Task InitializeSystemAsync()
+        {
+            await LoadPersistedDataAsync();
+            _autoScanTimer.Start();
+            await ExecuteScanInternalAsync(isAutomatic: true);
+        }
+
+        // Recupera los incidentes guardados y registra sus hashes para no reanalizarlos
+        private async Task LoadPersistedDataAsync()
+        {
+            var storedCases = await _storageService.LoadIncidentsAsync();
+            foreach (var c in storedCases)
+            {
+                _allCases.Add(c);
+                if (!string.IsNullOrWhiteSpace(c.EvidenciaSha256))
+                {
+                    _processedEvidenceHashes.Add(c.EvidenciaSha256);
+                }
+            }
+
+            ApplyFilterAndGrouping();
+
+            // Selecciona por defecto el primer caso disponible
+            if (_currentSessionCases.Count > 0)
+                SelectedCase = _currentSessionCases[0];
+            else if (_archivedCases.Count > 0)
+                SelectedCase = _archivedCases[0];
+        }
+
+        // Re-filtra la lista cada vez que cambia el texto del buscador
         partial void OnSearchTextChanged(string value)
         {
-            ApplyFilter();
+            ApplyFilterAndGrouping();
         }
 
-        /// <summary>
-        /// Alterna el estado de apertura de la barra lateral.
-        /// </summary>
         [RelayCommand]
-        private void ToggleSidebar()
-        {
-            IsSidebarOpen = !IsSidebarOpen;
-        }
+        private void ToggleSidebar() => IsSidebarOpen = !IsSidebarOpen;
 
-        // Alternar el modo automático (Play / Pause)
+        // Pausa o reanuda el sondeo automático
         [RelayCommand]
         private void ToggleAutoScan()
         {
@@ -112,65 +142,59 @@ namespace tcg.ViewModels
             }
         }
 
-        // Comando para disparar manualmente si el usuario pulsa el botón
+        // Análisis manual lanzado desde el botón "Forzar Análisis"
         [RelayCommand]
         public async Task TriggerAnalysisAsync()
         {
             await ExecuteScanInternalAsync(isAutomatic: false);
         }
 
-        /// <summary>
-        /// Núcleo del ciclo de sondeo: contacta con el backend, gestiona hashes SHA-256,
-        /// desglosa incidentes concurrentes y actualiza las listas observables.
-        /// </summary>
-        /// <param name="isAutomatic">Indica si la ejecución proviene del temporizador o de un clic manual.</param>
+        // Núcleo del sondeo: consulta la API, descarta duplicados y registra los nuevos casos
         private async Task ExecuteScanInternalAsync(bool isAutomatic)
         {
-            // Evitar solapamientos si un escaneo ya está en curso
+            // Evita solapar dos análisis a la vez
             if (IsLoading) return;
-
             IsLoading = true;
+
             if (!isAutomatic)
-            {
-                StatusMessage = "Extrayendo telemetría e interrogando a la IA...";
-            }
+                StatusMessage = "Extrayendo telemetría e interrogando al LLM...";
 
             try
             {
-                // Consulta asíncrona hacia FastAPI
                 var result = await _apiService.AnalyzeIncidentAsync();
 
                 if (result != null)
                 {
-                    // Si el backend avisa que no hay líneas nuevas o no hay hash
+                    // Caso 1: el servidor no detecta cambios en los logs
                     if (result.SinCambios || string.IsNullOrWhiteSpace(result.EvidenciaSha256))
                     {
+                        ApplyFilterAndGrouping();
                         StatusMessage = $"[Sin cambios] Telemetría sin novedades ({DateTime.Now:HH:mm:ss}).";
                         return;
                     }
 
-                    // 1. Control de deduplicación forense por SHA-256
+                    // Caso 2: la evidencia ya fue analizada anteriormente
                     if (_processedEvidenceHashes.Contains(result.EvidenciaSha256))
                     {
-                        StatusMessage = $"[Sin cambios] Evidencia SHA-256 idéntica ({DateTime.Now:HH:mm:ss}). No se duplican alertas.";
+                        ApplyFilterAndGrouping();
+                        StatusMessage = $"[Sin cambios] Evidencia SHA-256 idéntica ({DateTime.Now:HH:mm:ss}).";
                         return;
                     }
 
-                    // 2. Registro de la nueva evidencia
                     _processedEvidenceHashes.Add(result.EvidenciaSha256);
 
-                    // 3. Obtener la lista desagregada de incidentes
+                    // Un análisis puede contener varios incidentes; si no, se usa el dictamen único
                     var listaAvisos = result.Incidentes != null && result.Incidentes.Count > 0
                         ? result.Incidentes
                         : new List<ExpertOpinion> { result.DictamenPericial };
 
                     int subIndice = 1;
-                    ForensicCaseResponse? primerAtaqueDetectado = null;
+                    ForensicCaseResponse? primerAtaque = null;
 
-                    // 4. Crear una tarjeta independiente por cada vector detectado
+                    // Crea una tarjeta por incidente (con sufijo -1, -2... si hay varios)
                     foreach (var inc in listaAvisos)
                     {
-                        var tarjetaCaso = new ForensicCaseResponse
+                        var tarjeta = new ForensicCaseResponse
                         {
                             CasoId = listaAvisos.Count > 1 ? $"{result.CasoId}-{subIndice++}" : result.CasoId,
                             TimestampAnalisis = result.TimestampAnalisis,
@@ -179,37 +203,33 @@ namespace tcg.ViewModels
                             DictamenPericial = inc
                         };
 
-                        // Se inserta al principio para que los eventos más recientes aparezcan arriba en la lista
-                        _allCases.Insert(0, tarjetaCaso);
+                        _allCases.Insert(0, tarjeta);
 
-                        // Identificar la primera amenaza real para seleccionarla automáticamente
-                        if (inc.AtaqueDetectado && primerAtaqueDetectado == null)
+                        // Recuerda el primer ataque real para seleccionarlo después
+                        if (inc.AtaqueDetectado && primerAtaque == null)
                         {
-                            primerAtaqueDetectado = tarjetaCaso;
+                            primerAtaque = tarjeta;
                         }
                     }
 
-                    // Refrescar la colección filtrada con los nuevos registros
-                    ApplyFilter();
+                    await _storageService.SaveIncidentsAsync(_allCases);
 
-                    // 5. Seleccionar automáticamente el incidente prioritario
-                    if (primerAtaqueDetectado != null)
+                    ApplyFilterAndGrouping();
+
+                    // Si hay ataque se selecciona y se avisa; si no, se confirma actividad legítima
+                    if (primerAtaque != null)
                     {
-                        SelectedCase = primerAtaqueDetectado;
-                        StatusMessage = $"¡ALERTA NUEVA! {listaAvisos.Count} eventos catalogados. Principal: {primerAtaqueDetectado.DictamenPericial.TipoAtaque} ({DateTime.Now:HH:mm:ss})";
+                        SelectedCase = primerAtaque;
+                        StatusMessage = $"¡ALERTA NUEVA! {listaAvisos.Count} eventos catalogados ({DateTime.Now:HH:mm:ss}).";
                     }
                     else
                     {
-                        if (!isAutomatic && _allCases.Count > 0)
-                        {
-                            SelectedCase = _allCases[0];
-                        }
                         StatusMessage = $"Logs actualizados: Actividad legítima confirmada ({DateTime.Now:HH:mm:ss}).";
                     }
                 }
                 else
                 {
-                    StatusMessage = "Error: Sin respuesta del servidor en 192.168.56.20";
+                    StatusMessage = "Error: Sin respuesta del servidor defensivo.";
                 }
             }
             catch (Exception ex)
@@ -218,61 +238,74 @@ namespace tcg.ViewModels
             }
             finally
             {
-                // Liberar el indicador de carga tanto si terminó con éxito como si falló
                 IsLoading = false;
             }
         }
 
-        /// <summary>
-        /// Aplica un filtrado multicriterio en memoria (por CaseId, IP, tipo de ataque, técnica MITRE o severidad).
-        /// </summary>
-        private void ApplyFilter()
+        // Aplica el buscador y reparte los casos entre recientes (< 2h) y archivados (>= 2h)
+        private void ApplyFilterAndGrouping()
         {
-            if (string.IsNullOrWhiteSpace(SearchText))
-            {
-                // Si la caja de búsqueda está vacía, se visualiza el histórico íntegro
-                FilteredCases = new ObservableCollection<ForensicCaseResponse>(_allCases);
-            }
-            else
-            {
-                var query = SearchText.Trim().ToLowerInvariant();
+            var query = SearchText?.Trim().ToLowerInvariant() ?? "";
+            var limite2Horas = DateTime.UtcNow.AddHours(-2);
 
-                // Búsqueda insensible a mayúsculas sobre múltiples campos del incidente
-                var matches = _allCases.Where(c =>
-                    (c.CasoId != null && c.CasoId.ToLowerInvariant().Contains(query)) ||
-                    (c.DictamenPericial.IpAtacante != null && c.DictamenPericial.IpAtacante.ToLowerInvariant().Contains(query)) ||
-                    (c.DictamenPericial.TipoAtaque != null && c.DictamenPericial.TipoAtaque.ToLowerInvariant().Contains(query)) ||
-                    (c.DictamenPericial.TecnicaMitre != null && c.DictamenPericial.TecnicaMitre.ToLowerInvariant().Contains(query)) ||
-                    (c.DictamenPericial.Severidad != null && c.DictamenPericial.Severidad.ToLowerInvariant().Contains(query))
-                ).ToList();
+            // Filtra por ID, IP, tipo de ataque, técnica MITRE o severidad
+            var filtrados = _allCases.Where(c =>
+                string.IsNullOrWhiteSpace(query) ||
+                (c.CasoId?.ToLowerInvariant().Contains(query) ?? false) ||
+                (c.DictamenPericial.IpAtacante?.ToLowerInvariant().Contains(query) ?? false) ||
+                (c.DictamenPericial.TipoAtaque?.ToLowerInvariant().Contains(query) ?? false) ||
+                (c.DictamenPericial.TecnicaMitre?.ToLowerInvariant().Contains(query) ?? false) ||
+                (c.DictamenPericial.Severidad?.ToLowerInvariant().Contains(query) ?? false)
+            ).ToList();
 
-                FilteredCases = new ObservableCollection<ForensicCaseResponse>(matches);
-            }
+            var recientes = filtrados.Where(c => c.TimestampAnalisis >= limite2Horas).ToList();
+            var antiguos = filtrados.Where(c => c.TimestampAnalisis < limite2Horas).ToList();
 
-            // Si el caso actualmente abierto desaparece del filtro, reposicionar al primero disponible
-            if (SelectedCase != null && !FilteredCases.Contains(SelectedCase))
+            CurrentSessionCases = new ObservableCollection<ForensicCaseResponse>(recientes);
+            ArchivedCases = new ObservableCollection<ForensicCaseResponse>(antiguos);
+
+            // Si el caso seleccionado desaparece con el filtro, se elige otro disponible
+            if (SelectedCase != null && !CurrentSessionCases.Contains(SelectedCase) && !ArchivedCases.Contains(SelectedCase))
             {
-                SelectedCase = FilteredCases.FirstOrDefault();
+                SelectedCase = CurrentSessionCases.FirstOrDefault() ?? ArchivedCases.FirstOrDefault();
             }
         }
 
-        /// <summary>
-        /// Ejecuta la contramedida autorizada por el operador humano (Human-in-the-Loop)
-        /// enviando la orden de remediación activa al backend.
-        /// </summary>
+        // Ejecuta la contramedida propuesta tras la confirmación del analista (Human-in-the-Loop)
         [RelayCommand]
         public async Task ApplyRemediationActionAsync()
         {
-            // Validar que exista un caso seleccionado y que realmente exija acción defensiva
             if (SelectedCase == null || !SelectedCase.DictamenPericial.AccionPropuesta.RequiereAccion)
                 return;
 
             var accion = SelectedCase.DictamenPericial.AccionPropuesta;
+
+            // Busca la ventana activa para mostrar el diálogo de confirmación encima
+            var desktop = Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime;
+            var activeWindow = desktop?.Windows.FirstOrDefault(w => w.IsActive && w.IsVisible) ?? desktop?.MainWindow;
+
+            if (activeWindow != null && activeWindow.IsVisible)
+            {
+                var dialog = new tcg.Views.ConfirmRemediationDialog(
+                    accion.Tipo,
+                    accion.ComandoSugerido,
+                    accion.Justificacion
+                );
+
+                await dialog.ShowDialog(activeWindow);
+
+                // Si el operador cancela, no se ejecuta nada
+                if (!dialog.Confirmed)
+                {
+                    StatusMessage = "Acción defensiva cancelada por el operador.";
+                    return;
+                }
+            }
+
             StatusMessage = $"Aplicando contramedida sobre {accion.Objetivo}...";
 
             try
             {
-                // Envío asíncrono de los parámetros de mitigación al servidor
                 var result = await _apiService.ApplyRemediationAsync(
                     accion.Tipo,
                     accion.Objetivo,
@@ -282,8 +315,21 @@ namespace tcg.ViewModels
                 if (result != null)
                 {
                     StatusMessage = $"[DEFENSA ACTIVA] {result.Mensaje}";
-                    // Desactivamos la necesidad de acción para que el botón refleje que ya se aplicó
+                    // Desactiva el botón para que no se aplique dos veces
                     SelectedCase.DictamenPericial.AccionPropuesta.RequiereAccion = false;
+
+                    // Registro de auditoría de la acción ejecutada
+                    await _storageService.SaveRemediationLogAsync(new RemediationAuditRecord
+                    {
+                        CasoId = SelectedCase.CasoId ?? "N/A",
+                        Tipo = accion.Tipo,
+                        Objetivo = accion.Objetivo,
+                        ComandoEjecutado = result.ComandoEjecutado ?? accion.ComandoSugerido,
+                        Justificacion = accion.Justificacion,
+                        Status = result.Status
+                    });
+
+                    await _storageService.SaveIncidentsAsync(_allCases);
                 }
                 else
                 {

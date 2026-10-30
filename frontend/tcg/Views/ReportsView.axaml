@@ -1,0 +1,153 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:tcg.ViewModels"
+             x:Class="tcg.Views.ReportsView"
+             x:DataType="vm:ReportsViewModel"
+             Background="Transparent">
+
+    <!-- CONTENEDOR PRINCIPAL: SCROLL VERTICAL PARA TODO EL INFORME -->
+    <ScrollViewer Margin="20">
+        <StackPanel Spacing="20">
+            
+            <!-- ================= 1. CABECERA ================= -->
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- Título y descripción del informe -->
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <TextBlock Text="INFORME DE AMENAZAS Y TELEMETRÍA GLOBAL"
+                               FontSize="18"
+                               FontWeight="Black"
+                               LetterSpacing="1"
+                               Foreground="#FFFFFF"/>
+                    <TextBlock Text="Consolidado forense de ataques clasificados, distribución de severidad y áreas del servidor comprometidas."
+                               FontSize="11"
+                               Foreground="#8B949E"/>
+                </StackPanel>
+
+                <!-- Botón para recargar las estadísticas -->
+                <Button Grid.Column="1"
+                        Content="🔄 Actualizar Datos"
+                        Command="{Binding RefreshDataCommand}"
+                        Background="#21262D"
+                        Foreground="#58A6FF"
+                        BorderBrush="#30363D"
+                        BorderThickness="1"
+                        Padding="12 6"
+                        CornerRadius="6"
+                        FontSize="11"
+                        Cursor="Hand"/>
+            </Grid>
+
+            <!-- ================= 2. KPIs SUPERIORES ================= -->
+            <Grid ColumnDefinitions="*,*,*">
+                <!-- Total de incidentes -->
+                <Border Grid.Column="0" Background="#161B22" BorderBrush="#30363D" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0 0 10 0">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="TOTAL INCIDENTES REGISTRADOS" FontSize="10" FontWeight="Bold" Foreground="#8B949E"/>
+                        <TextBlock Text="{Binding TotalIncidentes}" FontSize="24" FontWeight="Black" Foreground="#58A6FF"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- IPs atacantes distintas -->
+                <Border Grid.Column="1" Background="#161B22" BorderBrush="#30363D" BorderThickness="1" CornerRadius="8" Padding="16" Margin="5 0">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="DIRECCIONES IP HOSTILES ÚNICAS" FontSize="10" FontWeight="Bold" Foreground="#8B949E"/>
+                        <TextBlock Text="{Binding TotalIpsUnicas}" FontSize="24" FontWeight="Black" Foreground="#F85149"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Bloqueos aprobados manualmente (Human-in-the-Loop) -->
+                <Border Grid.Column="2" Background="#161B22" BorderBrush="#30363D" BorderThickness="1" CornerRadius="8" Padding="16" Margin="10 0 0 0">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="CONTRAMEDIDAS EJECUTADAS (HITL)" FontSize="10" FontWeight="Bold" Foreground="#8B949E"/>
+                        <TextBlock Text="{Binding TotalRemediaciones}" FontSize="24" FontWeight="Black" Foreground="#3FB950"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ================= 3. GRÁFICAS Y DISTRIBUCIONES (CUADRÍCULA 2x2) ================= -->
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+
+                <!-- Ranking de IPs atacantes (barra roja) -->
+                <Border Grid.Row="0" Grid.Column="0" Background="#161B22" BorderBrush="#30363D" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0 0 10 16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="🌐 TOP DIRECCIONES IP ATACANTES" FontSize="12" FontWeight="Bold" Foreground="#C9D1D9"/>
+                        <ItemsControl ItemsSource="{Binding TopAttackerIps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <!-- Fila: etiqueta + cantidad y barra proporcional -->
+                                    <StackPanel Margin="0 4" Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Etiqueta}" FontFamily="Consolas, monospace" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Cantidad, StringFormat='{}{0} eventos'}" FontSize="11" Foreground="#8B949E"/>
+                                        </Grid>
+                                        <ProgressBar Value="{Binding Porcentaje}" Maximum="100" Height="4" Foreground="#F85149" Background="#0D1117" CornerRadius="2"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Tipos de ataque detectados (barra ámbar) -->
+                <Border Grid.Row="0" Grid.Column="1" Background="#161B22" BorderBrush="#30363D" BorderThickness="1" CornerRadius="8" Padding="16" Margin="10 0 0 16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="⚔️ CLASIFICACIÓN DE VECTORES" FontSize="12" FontWeight="Bold" Foreground="#C9D1D9"/>
+                        <ItemsControl ItemsSource="{Binding AttackTypesDistribution}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0 4" Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Etiqueta}" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Cantidad, StringFormat='{}{0} veces'}" FontSize="11" Foreground="#8B949E"/>
+                                        </Grid>
+                                        <ProgressBar Value="{Binding Porcentaje}" Maximum="100" Height="4" Foreground="#D29922" Background="#0D1117" CornerRadius="2"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Zonas del servidor más atacadas (barra azul) -->
+                <Border Grid.Row="1" Grid.Column="0" Background="#161B22" BorderBrush="#30363D" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0 0 10 0">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="🖥️ ZONAS / SUBSISTEMAS AFECTADOS" FontSize="12" FontWeight="Bold" Foreground="#C9D1D9"/>
+                        <ItemsControl ItemsSource="{Binding ServerZonesAttacked}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0 4" Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Etiqueta}" FontWeight="SemiBold" FontSize="12" Foreground="#FFFFFF"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Cantidad, StringFormat='{}{0} logs'}" FontSize="11" Foreground="#8B949E"/>
+                                        </Grid>
+                                        <ProgressBar Value="{Binding Porcentaje}" Maximum="100" Height="4" Foreground="#58A6FF" Background="#0D1117" CornerRadius="2"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Reparto por severidad, mostrado en porcentaje (barra morada) -->
+                <Border Grid.Row="1" Grid.Column="1" Background="#161B22" BorderBrush="#30363D" BorderThickness="1" CornerRadius="8" Padding="16" Margin="10 0 0 0">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="📊 DISTRIBUCIÓN POR CRITICIDAD" FontSize="12" FontWeight="Bold" Foreground="#C9D1D9"/>
+                        <ItemsControl ItemsSource="{Binding SeverityDistribution}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0 4" Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Etiqueta}" FontWeight="Bold" FontSize="12" Foreground="#FFFFFF"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Porcentaje, StringFormat='{}{0:F1}%'}" FontSize="11" Foreground="#8B949E"/>
+                                        </Grid>
+                                        <ProgressBar Value="{Binding Porcentaje}" Maximum="100" Height="4" Foreground="#A371F7" Background="#0D1117" CornerRadius="2"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -18,4 +18,19 @@
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Views\ConfirmRemediationDialog.axaml.cs">
+      <DependentUpon>ConfirmRemediationDialog.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\ReportsView.axaml.cs">
+      <DependentUpon>ReportsView.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\WarningDialog.axaml.cs">
+      <DependentUpon>WarningDialog.axaml</DependentUpon>
+    </Compile>
+    <Compile Update="Views\SplashWindow.axaml.cs">
+      <DependentUpon>SplashWindow.axaml</DependentUpon>
+    </Compile>
+  </ItemGroup>
 </Project>
