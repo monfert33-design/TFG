@@ -1,4 +1,4 @@
-#Plataforma DFIR & Purple Teaming con IA Generativa
+# Plataforma DFIR & Purple Teaming con IA Generativa
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20(Python%203.12)-009688?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -10,7 +10,7 @@ Trabajo de Fin de Grado (TFG) desarrollado por **Marcos García Gómez**.
 
 ---
 
-##Descripción del Proyecto:
+## Descripción del Proyecto:
 
 Este proyecto consiste en el diseño e implementación de una plataforma de ciberseguridad orientada a **DFIR** (*Digital Forensics and Incident Response*) y ejercicios de **Purple Teaming**. 
 
@@ -23,7 +23,7 @@ El sistema monitoriza en tiempo real los eventos y registros de un servidor Linu
 5. **Perspectiva Purple Team:** Evaluar de forma cruzada la efectividad de los vectores de ataque simulados frente a la capacidad de detección y respuesta de los mecanismos defensivos.
 ---
 
-##Arquitectura General del Sistema
+## Arquitectura General del Sistema
 
 ```text
 +-----------------------------------------------------------------------------------------+

@@ -1,0 +1,49 @@
+# Backend - Servidor de Telemetría, Motor DFIR y Remediación
+
+En este directorio se aloja el núcleo de la plataforma. El backend actúa como la capa intermedia entre el sistema operativo Ubuntu Server (recolección de telemetría y ejecución de defensas), el modelo de lenguaje de Google Gemini (análisis pericial y clasificación de amenazas) y el panel de control en Avalonia UI (consumo de eventos y autorización de contramedidas).
+
+---
+
+## Descripción del Módulo
+
+El backend está desarrollado sobre **FastAPI** en Python 3.12 y cumple tres funciones esenciales dentro de la arquitectura:
+
+1. **Ingesta y Filtrado Multicanal de Telemetría:** 
+   Monitorea de forma no intrusiva los registros del servidor. Utiliza punteros de lectura (*offsets*) almacenados en disco para procesar únicamente las líneas nuevas generadas desde el último ciclo, evitando lecturas redundantes o saturación de datos.
+
+2. **Inferencia Agéntica y Peritaje Forense:** 
+   Empaqueta los deltas de telemetría, calcula un sello criptográfico SHA-256 para preservar la integridad de la evidencia y consulta a la API de **Google Gemini**. El modelo evalúa los datos y genera un reporte estructurado en formato JSON, separando incidentes concurrentes, identificando la técnica MITRE ATT&CK correspondiente y sugiriendo una contramedida operativa.
+
+3. **Remediación Activa Supervisada (Human-in-the-Loop):** 
+   Expone endpoints seguros para ejecutar contramedidas autorizadas por el analista en el sistema operativo mediante llamadas de sistema (`subprocess`), tales como bloqueos automáticos en el firewall (`iptables`) o terminación forzada de procesos maliciosos (`kill -9`).
+
+---
+
+## Estructura de Ficheros
+
+* `main.py`: Punto de entrada de la aplicación FastAPI. Contiene los endpoints REST, el recolector de logs, la lógica de comprobación de integridad (FIM) y el cliente de inferencia de Gemini.
+* `agent_tools.py`: Definición de herramientas de inspección del sistema local (lectura de sockets abiertos, procesos activos o fragmentos de logs) disponibles para el agente.
+* `.env`: Archivo de configuración local para variables de entorno (claves de API, modelo seleccionado y puertos). Excluido de Git.
+* `.log_cursor.json`: Archivo de estado temporal que almacena los bytes leídos de cada fichero de log para el control de deltas. Excluido de Git.
+* `.fim_hashes.json`: Registro de hashes SHA-256 de los ficheros críticos del sistema para la detección de modificaciones no autorizadas. Excluido de Git.
+
+---
+
+## Requisitos y Puesta en Marcha
+
+### Dependencias Principales
+* Python 3.12+ con entorno virtual (`venv`).
+* Paquetes de Python: `fastapi`, `uvicorn`, `python-dotenv`, `google-genai`, `pydantic`.
+* Servicios del sistema: `nginx`, `iptables`, `auditd`.
+
+### Ejecución del Servicio
+Desde este directorio con el entorno virtual activo:
+
+```bash
+sudo /home/marcos/tfg/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+---
+
+## Version 0.1: Prueba inicial de funcionamiento
+
+En esta parte 

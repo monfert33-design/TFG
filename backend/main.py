@@ -26,14 +26,14 @@ app = FastAPI(
     description="Motor defensivo con ingesta multicanal, auditoría de kernel, FIM e inferencia agéntica"
 )
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+LLM_API_KEY = os.getenv("LLM_API_KEY")
 MODEL_NAME = os.getenv("AI_MODEL", "gemini-2.5-flash")
 
-if not GEMINI_API_KEY:
-    raise RuntimeError("Falta GEMINI_API_KEY en el archivo .env")
+if not LLM_API_KEY:
+    raise RuntimeError("Falta LLM_API_KEY en el archivo .env")
 
-# Cliente oficial de Google GenAI
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Cliente oficial
+client = genai.Client(api_key=LLM_API_KEY)
 
 # ==============================================================================
 # 2. DEFINICIÓN DE FUENTES DE TELEMETRÍA Y CONTROL DE INTEGRIDAD
@@ -427,3 +427,49 @@ def apply_remediation(req: RemediationRequest) -> Dict[str, Any]:
 
     else:
         raise HTTPException(status_code=400, detail=f"Tipo de acción '{req.tipo}' no soportada.")
+
+# ==============================================================================
+# 7. DIAGNÓSTICO INICIAL
+# ==============================================================================
+@app.get("/api/system/health")
+def system_health_check() -> Dict[str, Any]:
+    """Diagnóstico rápido de subsistemas para la pantalla de carga."""
+    # 1. Comprobación de lectura en canales de logs
+    logs_status = {}
+    for key, path in LOG_SOURCES.items():
+        logs_status[key] = path.exists() and os.access(path, os.R_OK)
+
+    # 2. Comprobación de auditd y reglas activas
+    auditd_active = False
+    try:
+        res = subprocess.run(["sudo", "auditctl", "-s"], capture_output=True, text=True)
+        auditd_active = "enabled 1" in res.stdout or "enabled 2" in res.stdout
+    except Exception:
+        auditd_active = False
+
+    # 3. Comprobación del modelo LLm
+    llm_status = False
+    llm_error = None
+    try:
+        test_resp = client.models.generate_content(
+            model=MODEL_NAME,
+            contents="ping",
+            config=types.GenerateContentConfig(max_output_tokens=5)
+        )
+        if test_resp and test_resp.text:
+            llm_status = True
+    except Exception as e:
+        llm_error = str(e)
+
+    all_ready = all(logs_status.values()) and llm_status
+
+    return {
+        "status": "ready" if all_ready else "degraded",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "subsystems": {
+            "llm_ai": {"ok": llm_status, "model": MODEL_NAME, "error": llm_error},
+            "kernel_auditd": {"ok": auditd_active},
+            "telemetry_sources": logs_status,
+            "fim_cache_ready": FIM_CACHE_FILE.exists()
+        }
+    }
